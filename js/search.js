@@ -1,180 +1,101 @@
-const searchBtn = document.querySelector("#search-btn")
-const searchIpt = document.querySelector("#search-input")
-const searchResult = document.querySelector("#search-result")
-const searchClearBtn = document.querySelector("#search-clear")
+var searchFunc = function(path, search_id, content_id) {
+    'use strict';
+    $.ajax({
+        url: path,
+        dataType: "xml",
+        success: function( xmlResponse ) {
+            // get the contents from search data
+            var datas = $( "entry", xmlResponse ).map(function() {
+                return {
+                    title: $( "title", this ).text(),
+                    content: $("content",this).text(),
+                    url: $( "url" , this).text()
+                };
+            }).get();
 
-const searchMask = document.querySelector("#search-mask")
+            var $input = document.getElementById(search_id);
+			if (!$input) return;
+            var $resultContent = document.getElementById(content_id);
+            if ($("#local-search-input").length > 0) {
+                $input.addEventListener('input', function () {
+                    var str = '<ul class=\"search-result-list\">';
+                    var keywords = this.value.trim().toLowerCase().split(/[\s\-]+/);
+                    $resultContent.innerHTML = "";
+                    if (this.value.trim().length <= 0) {
+                        return;
+                    }
+                    // perform local searching
+                    datas.forEach(function (data) {
+                        var isMatch = true;
+                        var content_index = [];
+                        if (!data.title || data.title.trim() === '') {
+                            data.title = "Untitled";
+                        }
+                        var data_title = data.title.trim().toLowerCase();
+                        var data_content = data.content.trim().replace(/<[^>]+>/g, "").toLowerCase();
+                        var data_url = data.url;
+                        var index_title = -1;
+                        var index_content = -1;
+                        var first_occur = -1;
+                        // only match artiles with not empty contents
+                        if (data_content !== '') {
+                            keywords.forEach(function (keyword, i) {
+                                index_title = data_title.indexOf(keyword);
+                                index_content = data_content.indexOf(keyword);
 
-let searchStatus = 0
+                                if (index_title < 0 && index_content < 0) {
+                                    isMatch = false;
+                                } else {
+                                    if (index_content < 0) {
+                                        index_content = 0;
+                                    }
+                                    if (i == 0) {
+                                        first_occur = index_content;
+                                    }
+                                    // content_index.push({index_content:index_content, keyword_len:keyword_len});
+                                }
+                            });
+                        } else {
+                            isMatch = false;
+                        }
+                        // show search results
+                        if (isMatch) {
+                            str += "<li><a href='" + data_url + "' class='search-result-title'>" + data_title + "</a>";
+                            var content = data.content.trim().replace(/<[^>]+>/g, "");
+                            if (first_occur >= 0) {
+                                // cut out 100 characters
+                                var start = first_occur - 20;
+                                var end = first_occur + 80;
 
-function showSearchDialog() {
-  if (searchStatus) return
-  searchMask.style.display = 'block'
-  document.body.style.overflow = 'hidden'
-  searchIpt.focus()
-  searchStatus = 1
-}
+                                if (start < 0) {
+                                    start = 0;
+                                }
 
-function closeSearchDialog() {
-  if (!searchStatus) return
-  searchMask.style.display = 'None'
-  document.body.style.overflow = 'inherit'
-  searchIpt.value = ""
-  searchStatus = 0
-}
+                                if (start == 0) {
+                                    end = 100;
+                                }
 
-function searchInitialize(url) {
-  fetch(url).then(res => res.json()).then(res => {
-    const inputHandler = debounce(doSearch)
+                                if (end > content.length) {
+                                    end = content.length;
+                                }
 
-    searchBtn.style.display = "flex"
+                                var match_content = content.substring(start, end);
 
-    document.addEventListener('keydown', e => {
-      if ((e.ctrlKey || e.metaKey) && e.key == "k") {
-        if (searchStatus) closeSearchDialog()
-        else showSearchDialog()
-      }
-      if (e.key == 'Escape') closeSearchDialog()
-    })
+                                // highlight all keywords
+                                keywords.forEach(function (keyword) {
+                                    var regS = new RegExp(keyword, "gi");
+                                    match_content = match_content.replace(regS, "<em class=\"search-keyword\">" + keyword + "</em>");
+                                });
 
-    searchClearBtn.addEventListener('click', () => {
-      searchIpt.value = ""
-      clearResult()
-    })
-
-    searchBtn.addEventListener('click', () => {
-      showSearchDialog()
-    })
-
-    searchMask.addEventListener('click', e => {
-      if (e.target !== searchMask) return
-      closeSearchDialog()
-    }, true)
-
-    searchIpt.addEventListener('input', inputHandler.bind(searchIpt, res))
-  })
-}
-
-function clearResult() {
-  searchResult.innerHTML = ''
-}
-
-function doSearch(data) {
-  if (this.value.trim().length <= 0) return clearResult()
-
-  var keywords = this.value.trim().toLowerCase().split(/[\s\-]+/);
-
-  const result = search(data, keywords)
-
-  renderSearchResult(result, searchResult)
-}
-
-function search(data, keywords) {
-  const matchedPost = []
-
-  data
-    .filter(post => post.content)
-    .forEach(post => {
-      let postTitle = post.title && post.title.trim()
-      postTitle = (postTitle && postTitle.length > 0) ? postTitle : "Untitled"
-
-      const postContent = post.content.trim().replace(/<[^>]+>/g, "")
-
-      const matchedContentIdices = []
-
-      keywords.forEach((keyword, i) => {
-        const index_title = postTitle.toLowerCase().indexOf(keyword);
-        const index_content = postContent.toLowerCase().indexOf(keyword);
-
-        if (index_title < 0 && index_content < 0) return
-
-        matchedContentIdices.push(Math.max(index_content, 0))
-      });
-
-      if (matchedContentIdices.length) matchedPost.push({
-        url: post.url,
-        content: trimeContent(matchedContentIdices, postContent, keywords),
-        title: postTitle
-      })
+                                str += "<p class=\"search-result\">" + match_content + "...</p>"
+                            }
+                            str += "</li>";
+                        }
+                    });
+                    str += "</ul>";
+                    $resultContent.innerHTML = str;
+                });
+            }
+        }
     });
-
-  return matchedPost
-}
-
-function renderSearchResult(result, el) {
-  el.innerHTML = ''
-
-  if (!result || result.length <= 0) {
-    el.innerHTML = '<div class="search-result-empty">无结果</div>'
-  }
-
-  const list = document.createDocumentFragment()
-  result.forEach(res => {
-    const item = document.createElement('a')
-    item.className = 'search-result-item'
-    item.href = res.url
-
-    const title = document.createElement('DIV')
-    title.className = 'search-result__head'
-    title.innerText = res.title
-
-    const content = document.createElement('DIV')
-    content.className = 'search-result__body'
-    res.content.forEach(contentText => {
-      const contentItem = document.createElement('DIV')
-      contentItem.innerHTML = contentText
-      content.appendChild(contentItem)
-    })
-
-    item.append(title, content)
-    list.append(item)
-  })
-
-  el.appendChild(list)
-}
-
-function trimeContent(keyIndexs, content, keywords, wordLen = 20) {
-  const reg = /[\u4e00-\u9fa5]|\w+/gd
-  const splitIndex = []
-  let arr
-  while ((arr = reg.exec(content)) !== null)
-    splitIndex.push(arr.indices[0])
-
-  return keyIndexs.map(key => {
-    let pos = binaryFind(splitIndex, key)
-    const wordStart = Math.max(0, pos - 10)
-    const wordEnd = Math.min(wordLen + wordStart, splitIndex.length - 1)
-    const start = splitIndex[wordStart][0]
-    const end = splitIndex[wordEnd][1]
-
-    keywords.forEach(keyword => {
-      content = content
-        .slice(start, end)
-        .replace(new RegExp(keyword, 'ig'),
-          `<span class="search-keyword">${keyword}</span>`)
-    })
-
-    return content
-  })
-}
-
-function binaryFind(arr, value) {
-  let i = 0, j = arr.length - 1, mid = j
-  while (i <= j) {
-    if (value < arr[mid][0]) j = mid - 1;
-    else if (value > arr[mid][1]) i = mid + 1
-    else return mid
-    mid = Math.floor((i + j) / 2)
-  }
-  return mid
-}
-
-function debounce(fn, t = 400) {
-  let timer = null
-  return function (...args) {
-    clearTimeout(timer)
-    timer = setTimeout(() => {
-      fn.call(this, ...args)
-    }, t)
-  }
 }
